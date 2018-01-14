@@ -65,7 +65,7 @@ type Err = Box<Error>;
 
 /// Helps clean up type signatures, but shouldn't be exposed to the outside
 /// world.
-type Result<T> = std::result::Result<T, Err>;
+pub type Result<T> = std::result::Result<T, Err>;
 
 impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {

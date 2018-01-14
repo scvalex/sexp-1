@@ -59,22 +59,22 @@ impl error::Error for Error {
 /// Since errors are the uncommon case, they're boxed. This keeps the size of
 /// structs down, which helps performance in the common case.
 ///
-/// For example, an `ERes<()>` becomes 8 bytes, instead of the 24 bytes it would
+/// For example, an `Result<()>` becomes 8 bytes, instead of the 24 bytes it would
 /// be if `Err` were unboxed.
 type Err = Box<Error>;
 
 /// Helps clean up type signatures, but shouldn't be exposed to the outside
 /// world.
-type ERes<T> = Result<T, Err>;
+type Result<T> = std::result::Result<T, Err>;
 
 impl fmt::Display for Error {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     write!(f, "{}:{}: {}", self.line, self.column, self.message)
   }
 }
 
 impl fmt::Debug for Error {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     write!(f, "{}", self)
   }
 }
@@ -124,7 +124,7 @@ fn err_impl(message: &'static str, s: &str, pos: &usize) -> Err {
   })
 }
 
-fn err<T>(message: &'static str, s: &str, pos: &usize) -> ERes<T> {
+fn err<T>(message: &'static str, s: &str, pos: &usize) -> Result<T> {
   Err(err_impl(message, s, pos))
 }
 
@@ -150,7 +150,7 @@ fn atom_of_string(s: String) -> Atom {
 }
 
 // returns the char it found, and the new size if you wish to consume that char
-fn peek(s: &str, pos: &usize) -> ERes<(char, usize)> {
+fn peek(s: &str, pos: &usize) -> Result<(char, usize)> {
   dbg("peek", pos);
   if *pos == s.len() { return err("unexpected eof", s, pos) }
   if s.is_char_boundary(*pos) {
@@ -163,14 +163,14 @@ fn peek(s: &str, pos: &usize) -> ERes<(char, usize)> {
   }
 }
 
-fn expect(s: &str, pos: &mut usize, c: char) -> ERes<()> {
+fn expect(s: &str, pos: &mut usize, c: char) -> Result<()> {
   dbg("expect", pos);
   let (ch, next) = try!(peek(s, pos));
   *pos = next;
   if ch == c { Ok(()) } else { err("unexpected character", s, pos) }
 }
 
-fn consume_until_newline(s: &str, pos: &mut usize) -> ERes<()> {
+fn consume_until_newline(s: &str, pos: &mut usize) -> Result<()> {
   loop {
     if *pos == s.len() { return Ok(()) }
     let (ch, next) = try!(peek(s, pos));
@@ -180,7 +180,7 @@ fn consume_until_newline(s: &str, pos: &mut usize) -> ERes<()> {
 }
 
 // zero or more spaces
-fn zspace(s: &str, pos: &mut usize) -> ERes<()> {
+fn zspace(s: &str, pos: &mut usize) -> Result<()> {
   dbg("zspace", pos);
   loop {
     if *pos == s.len() { return Ok(()) }
@@ -192,7 +192,7 @@ fn zspace(s: &str, pos: &mut usize) -> ERes<()> {
   }
 }
 
-fn parse_quoted_atom(s: &str, pos: &mut usize) -> ERes<Atom> {
+fn parse_quoted_atom(s: &str, pos: &mut usize) -> Result<Atom> {
   dbg("parse_quoted_atom", pos);
   let mut cs: String = String::new();
 
@@ -222,7 +222,7 @@ fn parse_quoted_atom(s: &str, pos: &mut usize) -> ERes<Atom> {
   Ok(Atom::S(cs))
 }
 
-fn parse_unquoted_atom(s: &str, pos: &mut usize) -> ERes<Atom> {
+fn parse_unquoted_atom(s: &str, pos: &mut usize) -> Result<Atom> {
   dbg("parse_unquoted_atom", pos);
   let mut cs: String = String::new();
 
@@ -239,7 +239,7 @@ fn parse_unquoted_atom(s: &str, pos: &mut usize) -> ERes<Atom> {
   Ok(atom_of_string(cs))
 }
 
-fn parse_atom(s: &str, pos: &mut usize) -> ERes<Atom> {
+fn parse_atom(s: &str, pos: &mut usize) -> Result<Atom> {
   dbg("parse_atom", pos);
   let (ch, _) = try!(peek(s, pos));
 
@@ -247,7 +247,7 @@ fn parse_atom(s: &str, pos: &mut usize) -> ERes<Atom> {
   else         { parse_unquoted_atom(s, pos) }
 }
 
-fn parse_list(s: &str, pos: &mut usize) -> ERes<Vec<Sexp>> {
+fn parse_list(s: &str, pos: &mut usize) -> Result<Vec<Sexp>> {
   dbg("parse_list", pos);
   try!(zspace(s, pos));
   try!(expect(s, pos, '('));
@@ -269,7 +269,7 @@ fn parse_list(s: &str, pos: &mut usize) -> ERes<Vec<Sexp>> {
   Ok(sexps)
 }
 
-fn parse_sexp(s: &str, pos: &mut usize) -> ERes<Sexp> {
+fn parse_sexp(s: &str, pos: &mut usize) -> Result<Sexp> {
   dbg("parse_sexp", pos);
   try!(zspace(s, pos));
   let (c, _) = try!(peek(s, pos));
@@ -302,7 +302,7 @@ pub fn list(xs: &[Sexp]) -> Sexp {
 
 /// Reads an s-expression out of a `&str`.
 #[inline(never)]
-pub fn parse(s: &str) -> Result<Sexp, Box<Error>> {
+pub fn parse(s: &str) -> Result<Sexp> {
   let mut pos = 0;
   let ret = try!(parse_sexp(s, &mut pos));
   if pos == s.len() { Ok(ret) } else { err("unrecognized post-s-expression data", s, &pos) }
@@ -312,8 +312,8 @@ pub fn parse(s: &str) -> Result<Sexp, Box<Error>> {
 // packed as tightly as possible. It's kinda ugly.
 
 fn is_num_string(s: &str) -> bool {
-  let x: Result<i64, _> = FromStr::from_str(&s);
-  let y: Result<f64, _> = FromStr::from_str(&s);
+  let x: std::result::Result<i64, _> = FromStr::from_str(&s);
+  let y: std::result::Result<f64, _> = FromStr::from_str(&s);
   x.is_ok() || y.is_ok()
 }
 
@@ -338,7 +338,7 @@ fn quote(s: &str) -> Cow<str> {
 }
 
 impl fmt::Display for Atom {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     match *self {
       Atom::S(ref s) => write!(f, "{}", quote(s)),
       Atom::I(i)     => write!(f, "{}", i),
@@ -348,7 +348,7 @@ impl fmt::Display for Atom {
 }
 
 impl fmt::Display for Sexp {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     match *self {
       Sexp::Atom(ref a) => write!(f, "{}", a),
       Sexp::List(ref xs) => {
@@ -364,13 +364,13 @@ impl fmt::Display for Sexp {
 }
 
 impl fmt::Debug for Atom {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     write!(f, "{}", self)
   }
 }
 
 impl fmt::Debug for Sexp {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     write!(f, "{}", self)
   }
 }
